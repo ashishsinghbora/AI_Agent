@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Download, Copy, Brain, Zap, UploadCloud } from 'lucide-react';
+import { Send, Download, Copy, Zap, UploadCloud } from 'lucide-react';
 import './CenterPanel.css';
+import CollapsedThinking from './CollapsedThinking';
 
 function CenterPanel({
   chatMessages,
@@ -83,45 +84,6 @@ function CenterPanel({
     return <div className="markdown-content" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
-  const buildThoughtTree = (text) => {
-    if (!text) return [];
-    const lines = text.split('\n').filter(line => line.trim());
-    const nodes = [];
-    const stack = [{ depth: -1, children: nodes }];
-
-    lines.forEach((line, index) => {
-      const depth = line.match(/^\s*/)[0].length;
-      const label = line.replace(/^\s*[-*\d.)]+\s*/, '').trim();
-      const node = { id: `${index}`, label, children: [] };
-
-      while (stack.length && depth <= stack[stack.length - 1].depth) {
-        stack.pop();
-      }
-
-      stack[stack.length - 1].children.push(node);
-      stack.push({ depth, children: node.children });
-    });
-
-    return nodes;
-  };
-
-  const renderThoughtTree = (nodes) => {
-    if (!nodes.length) {
-      return <div className="thought-empty">No plan steps yet.</div>;
-    }
-
-    return (
-      <ul className="thought-tree">
-        {nodes.map(node => (
-          <li key={node.id}>
-            <span className="thought-node">{node.label}</span>
-            {node.children.length > 0 && renderThoughtTree(node.children)}
-          </li>
-        ))}
-      </ul>
-    );
-  };
-
   return (
     <div
       className={`center-panel ${isDragActive ? 'drag-active' : ''}`}
@@ -198,16 +160,9 @@ function CenterPanel({
                 {renderMarkdown(msg.content)}
               </div>
               {msg.thinking && (
-                <details className="thought-details">
-                  <summary className="thought-summary">
-                    <Brain size={16} />
-                    <span>Research Plan</span>
-                  </summary>
-                  <div className="thought-body">
-                    {renderThoughtTree(buildThoughtTree(msg.thinking))}
-                    <pre className="thought-raw">{msg.thinking}</pre>
-                  </div>
-                </details>
+                <div style={{ marginTop: '8px' }}>
+                  <CollapsedThinking content={msg.thinking} isStreaming={false} />
+                </div>
               )}
             </div>
             <button
@@ -220,26 +175,13 @@ function CenterPanel({
           </div>
         ))}
 
-        {/* Thinking Content Display */}
-        {isResearching && thinkingContent && showThinking && (
-          <div className="message message-thinking-display">
-            <div className="message-avatar">🧠</div>
-            <div className="message-content">
-              <div className="message-header">
-                <span className="message-role">Research Plan</span>
-                <button
-                  className="thinking-close"
-                  onClick={() => onToggleThinking()}
-                  title="Hide thinking"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="message-body thinking-text">
-                {renderThoughtTree(buildThoughtTree(thinkingContent))}
-                <pre className="thought-raw">{thinkingContent}</pre>
-              </div>
-            </div>
+        {/* Thinking Content — collapsible panel shown whenever research is active */}
+        {isResearching && (
+          <div className="message-thinking-wrapper">
+            <CollapsedThinking
+              content={thinkingContent}
+              isStreaming={isResearching && !thinkingContent?.endsWith('...')}
+            />
           </div>
         )}
 
@@ -274,12 +216,6 @@ function CenterPanel({
             <div className="progress-bar">
               <div className="progress-fill" style={{ width: `${researchProgress}%` }}></div>
             </div>
-            {thinkingContent && !showThinking && (
-              <button className="thinking-toggle" type="button" onClick={onToggleThinking}>
-                <Brain size={14} />
-                <span>Show Research Plan</span>
-              </button>
-            )}
           </div>
         )}
 
