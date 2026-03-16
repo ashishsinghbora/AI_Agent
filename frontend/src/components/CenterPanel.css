@@ -323,6 +323,10 @@
 }
 
 /* Thinking Display */
+.message-thinking-wrapper {
+  padding: 0 16px 8px;
+}
+
 .message-thinking-display {
   border-left: 3px solid var(--primary);
 }

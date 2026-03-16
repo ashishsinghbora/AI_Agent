@@ -61,7 +61,50 @@ html, body {
   overflow: hidden;
 }
 
-/* Scrollbar Styling */
+/* ── Center wrapper (column: controls + chat) ── */
+.center-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.center-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--bg-secondary, #0f0f23);
+  border-bottom: 1px solid var(--border-color, #2a2a4a);
+  flex-shrink: 0;
+}
+
+.source-count-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #2a2a4a);
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.source-count-btn:hover {
+  border-color: #4a90d9;
+  color: #e2e8f0;
+}
+
+.source-count-icon {
+  font-size: 0.75rem;
+}
+
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

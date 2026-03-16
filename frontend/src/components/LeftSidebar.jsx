@@ -2,7 +2,7 @@ import React from 'react';
 import { Plus, Search, Trash2, MessageSquare } from 'lucide-react';
 import './LeftSidebar.css';
 
-function LeftSidebar({ sessions, currentSessionId, onSelectSession, onNewSession }) {
+function LeftSidebar({ sessions, currentSessionId, onSelectSession, onNewSession, onDeleteSession }) {
   const formatDate = (dateString) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -61,9 +61,15 @@ function LeftSidebar({ sessions, currentSessionId, onSelectSession, onNewSession
                     <span className="session-count">{session.findings_count} findings</span>
                   </div>
                 </div>
-                <button className="session-delete" title="Delete session">
-                  <Trash2 size={16} />
-                </button>
+                {onDeleteSession && (
+                  <button
+                    className="session-delete"
+                    title="Delete session"
+                    onClick={(e) => onDeleteSession(session.session_id, e)}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             ))}
           </div>

@@ -1,0 +1,88 @@
+.ct-container {
+  border-radius: 8px;
+  border: 1px solid #2a2a4a;
+  background: #0f0f23;
+  overflow: hidden;
+  margin-bottom: 8px;
+  transition: border-color 0.2s ease;
+}
+
+.ct-container.ct-expanded {
+  border-color: #4a5568;
+}
+
+.ct-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  font-size: 0.8rem;
+  transition: background 0.15s ease, color 0.15s ease;
+  text-align: left;
+}
+
+.ct-toggle:hover {
+  background: #1a1a30;
+  color: #e2e8f0;
+}
+
+.ct-toggle-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ct-brain {
+  color: #7c3aed;
+  flex-shrink: 0;
+}
+
+.ct-brain.ct-pulse {
+  animation: ct-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ct-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.92); }
+}
+
+.ct-toggle-label {
+  font-weight: 600;
+  color: inherit;
+}
+
+.ct-streaming-badge {
+  font-size: 0.65rem;
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: 4px;
+  padding: 1px 6px;
+  animation: ct-pulse 1.2s ease-in-out infinite;
+}
+
+.ct-body {
+  padding: 10px 14px 12px;
+  border-top: 1px solid #2a2a4a;
+}
+
+.ct-content {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #c4b5fd;
+  margin: 0;
+}
+
+.ct-empty {
+  font-size: 0.78rem;
+  color: #4a5568;
+  font-style: italic;
+}

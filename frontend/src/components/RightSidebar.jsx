@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, Cpu, HardDrive, Link2, ExternalLink, Terminal, Zap, AlertTriangle, Share2 } from 'lucide-react';
 import './RightSidebar.css';
+import CPUBudgetSlider from './CPUBudgetSlider';
 
 function RightSidebar({
   systemStats,
@@ -16,7 +17,9 @@ function RightSidebar({
   onPerformanceChange,
   conflictAlert,
   onResolveConflict,
-  knowledgeGraph
+  knowledgeGraph,
+  cpuBudget,
+  onCpuBudgetChange,
 }) {
   const [ramUsage, setRamUsage] = useState(0);
 
@@ -194,6 +197,11 @@ function RightSidebar({
             ? 'Eco uses fewer sources with fast responses.'
             : 'High uses deeper reasoning and more sources.'}
         </div>
+        {onCpuBudgetChange && (
+          <div style={{ marginTop: '12px' }}>
+            <CPUBudgetSlider value={cpuBudget ?? 80} onChange={onCpuBudgetChange} />
+          </div>
+        )}
       </div>
 
       {/* Research Progress */}
