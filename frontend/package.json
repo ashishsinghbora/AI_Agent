@@ -1,6 +1,6 @@
 {
   "name": "research-agent-ui",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "ChatGPT-style UI for Research Student AI Agent",
   "private": true,
   "dependencies": {
