@@ -17,9 +17,31 @@ function App() {
   const [researchProgress, setResearchProgress] = useState(0);
   const [thinkingContent, setThinkingContent] = useState('');
   const [responseContent, setResponseContent] = useState('');
+  const [activeQuery, setActiveQuery] = useState('');
+  const [performanceMode, setPerformanceMode] = useState('high');
+  const [crawlEvents, setCrawlEvents] = useState([]);
+  const [selectedSource, setSelectedSource] = useState(null);
+  const [conflictAlert, setConflictAlert] = useState(null);
+  const [uploadItems, setUploadItems] = useState([]);
+  const [knowledgeGraph, setKnowledgeGraph] = useState(null);
   const [showThinking, setShowThinking] = useState(true);
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
   const systemStatsIntervalRef = useRef(null);
+
+  const performanceProfiles = {
+    high: {
+      speed_mode: 'deep',
+      max_sources: 6,
+      use_thinking_model: true,
+      thinking_chars: 240
+    },
+    eco: {
+      speed_mode: 'fast',
+      max_sources: 2,
+      use_thinking_model: false,
+      thinking_chars: 0
+    }
+  };
 
   // Fetch system stats periodically
   useEffect(() => {
@@ -61,8 +83,85 @@ function App() {
     fetchSessions();
   }, [apiBaseUrl, currentSessionId]);
 
-  const handleResearch = async (query) => {
+  const handleUploadFiles = (files) => {
+    Array.from(files || []).forEach((file) => {
+      handleFileUpload(file);
+    });
+  };
+
+  const handleFileUpload = async (file) => {
+    if (!file) return;
+    const uploadId = `${file.name}-${Date.now()}`;
+    setUploadItems(prev => ([
+      ...prev,
+      { id: uploadId, name: file.name, status: 'embedding', detail: '' }
+    ]));
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/ingest`, {
+        method: 'POST',
+        body: formData
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.detail || 'Upload failed');
+      }
+
+      setUploadItems(prev => prev.map(item => (
+        item.id === uploadId
+          ? { ...item, status: 'embedded', detail: `${data.chars || 0} chars` }
+          : item
+      )));
+    } catch (error) {
+      setUploadItems(prev => prev.map(item => (
+        item.id === uploadId
+          ? { ...item, status: 'failed', detail: error.message }
+          : item
+      )));
+    }
+  };
+
+  const handleConflictDecision = (action) => {
+    if (!activeQuery) {
+      setConflictAlert(null);
+      return;
+    }
+
+    if (action === 'third_source') {
+      handleResearch(activeQuery, {
+        max_sources: 8,
+        speed_mode: 'deep'
+      });
+    } else if (action === 'prefer_official') {
+      handleResearch(activeQuery, {
+        max_sources: 5,
+        speed_mode: 'balanced',
+        preferred_domains: [
+          '.gov',
+          '.edu',
+          'wikipedia.org',
+          'ibm.com',
+          'microsoft.com',
+          'oracle.com'
+        ]
+      });
+    }
+
+    setConflictAlert(null);
+  };
+
+  const handleResearch = async (query, overrides = {}) => {
     if (!query.trim()) return;
+
+    const profile = performanceProfiles[performanceMode] || performanceProfiles.high;
+    const requestOptions = {
+      ...profile,
+      preferred_domains: [],
+      ...overrides
+    };
 
     const userMessage = { role: 'user', content: query, timestamp: new Date() };
     const requestHistory = [...chatMessages, userMessage];
@@ -71,6 +170,12 @@ function App() {
     setResearchProgress(0);
     setThinkingContent('');
     setResponseContent('');
+    setShowThinking(true);
+    setActiveQuery(query);
+    setCrawlEvents([]);
+    setSelectedSource(null);
+    setConflictAlert(null);
+    setKnowledgeGraph(null);
     setChatMessages(requestHistory);
 
     let accumulatedThinking = '';
@@ -91,12 +196,22 @@ function App() {
         latestSources = event.sources || [];
         setSources(latestSources);
         setResearchProgress(event.progress || 30);
+      } else if (event.type === 'crawl_update') {
+        setCrawlEvents(prev => ([...prev, event]));
+      } else if (event.type === 'conflict_alert') {
+        setConflictAlert(event);
+      } else if (event.type === 'concept_graph') {
+        setKnowledgeGraph(event.graph || null);
       } else if (event.type === 'status') {
         setResearchProgress(event.progress || 50);
       } else if (event.type === 'research_complete') {
         researchCompleted = true;
         setResearchProgress(100);
         const finalResponse = accumulatedResponse || 'No response generated.';
+        if (event.sources) {
+          latestSources = event.sources;
+          setSources(event.sources);
+        }
         setChatMessages(prev => [...prev, {
           role: 'assistant',
           content: finalResponse,
@@ -122,7 +237,11 @@ function App() {
         body: JSON.stringify({
           query: query,
           chat_history: requestHistory,
-          use_thinking_model: true
+          use_thinking_model: requestOptions.use_thinking_model,
+          max_sources: requestOptions.max_sources,
+          speed_mode: requestOptions.speed_mode,
+          thinking_chars: requestOptions.thinking_chars,
+          preferred_domains: requestOptions.preferred_domains
         })
       });
 
@@ -219,6 +338,12 @@ function App() {
             setThinkingContent('');
             setResponseContent('');
             setSources([]);
+            setActiveQuery('');
+            setCrawlEvents([]);
+            setSelectedSource(null);
+            setConflictAlert(null);
+            setKnowledgeGraph(null);
+            setUploadItems([]);
           }}
         />
 
@@ -233,6 +358,9 @@ function App() {
           onToggleThinking={() => setShowThinking(!showThinking)}
           researchProgress={researchProgress}
           onExport={handleExport}
+          uploadItems={uploadItems}
+          onUploadFiles={handleUploadFiles}
+          activeQuery={activeQuery}
         />
 
         {/* Right Sidebar */}
@@ -241,6 +369,16 @@ function App() {
           sources={sources}
           isResearching={isResearching}
           researchProgress={researchProgress}
+          onSourceSelect={setSelectedSource}
+          selectedSource={selectedSource}
+          onCloseSource={() => setSelectedSource(null)}
+          crawlEvents={crawlEvents}
+          activeQuery={activeQuery}
+          performanceMode={performanceMode}
+          onPerformanceChange={setPerformanceMode}
+          conflictAlert={conflictAlert}
+          onResolveConflict={handleConflictDecision}
+          knowledgeGraph={knowledgeGraph}
         />
       </div>
     </div>

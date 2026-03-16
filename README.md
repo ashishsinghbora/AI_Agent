@@ -1,3 +1,4 @@
+
 # Research Student AI Agent
 
 A sophisticated, locally-hosted AI research assistant with a ChatGPT-style interface for autonomous web research, analysis, and knowledge management.
@@ -14,83 +15,108 @@ A sophisticated, locally-hosted AI research assistant with a ChatGPT-style inter
   - Right: System monitor and research sources
 - **Markdown & LaTeX Support**: Rich text formatting and mathematical equation rendering
 - **Export Capabilities**: Save research as PDF or Markdown
-- **Smart Avatar**: Animated avatar showing thinking and progress status
+- **Smart Avatar**: Animated avatar showing thinking and progress status (bottom-right)
 - **Resource-Optimized**: Designed for low-end PCs with async I/O and smart model management
+- **Containerized Deployment**: Docker support for easy deployment
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.10+
+- Node.js 16+
+- Docker & Docker Compose (recommended)
+- 4GB RAM minimum (8GB recommended)
+- 10GB free disk space
+
+### One-Command Start (Recommended)
+```bash
+git clone <repository-url>
+cd research_agent
+./start-docker.sh
+```
+
+**Alternative native start:**
+```bash
+./setup.sh
+./start-all.sh
+```
+
+Then open http://localhost:3000 in your browser.
+
+## 📚 Documentation
+
+For detailed documentation, see the [docs/](docs/) folder:
+
+- [Complete Documentation](docs/README.md)
+- [API Reference](docs/API.md)
+- [Architecture Details](docs/ARCHITECTURE.md)
+- [Deployment Guide](docs/DEPLOYMENT.md)
+- [Quick Start Details](docs/QUICKSTART.md)
 
 ## 🏗️ Architecture
 
 ```
 research_agent/
-├── backend/
-│   ├── main.py           # FastAPI server & agentic loop
-│   ├── tools.py          # Web research, file management, tools
-│   ├── requirements.txt   # Python dependencies
-│   └── .env.example       # Configuration template
-├── frontend/
-│   ├── public/
-│   │   └── index.html     # HTML entry point
-│   ├── src/
-│   │   ├── App.jsx        # Main application component
-│   │   ├── index.js       # React entry point
-│   │   ├── index.css      # Global styles
-│   │   └── components/
-│   │       ├── LeftSidebar.jsx       # Session management
-│   │       ├── CenterPanel.jsx       # Chat interface
-│   │       ├── RightSidebar.jsx      # System monitor & sources
-│   │       └── SmartChildAvatar.jsx  # Smart child avatar
-│   ├── package.json       # Node dependencies
-│   └── .env               # Frontend configuration
-├── research_notes/        # Local storage for research findings
-├── setup.sh              # Complete installation script
-└── README.md             # This file
+├── backend/              # FastAPI server & agentic loop
+├── frontend/             # React application
+├── docs/                 # Comprehensive documentation
+├── research_notes/       # Local storage for findings
+├── docker-compose.yml    # Container orchestration
+├── setup.sh             # Installation script
+├── start-docker.sh      # Docker startup script
+└── start-all.sh         # Native startup script
 ```
 
 ## 📋 Requirements
 
-- **OS**: Fedora Linux (optimized) or any Linux distribution
-- **User**: `ashu` (or modify paths in configuration)
-- **Python**: 3.10+
-- **Node.js**: 16+
-- **RAM**: 4GB+ recommended
-- **Ollama**: Must be installed and running
+- **OS**: Linux (Fedora recommended) or macOS/Windows with Docker
+- **Python**: 3.10+ (for native installation)
+- **Node.js**: 16+ (for native installation)
+- **Docker**: For containerized deployment (recommended)
+- **RAM**: 4GB minimum, 8GB recommended
+- **Disk**: 10GB free space
 
 ## 🚀 Quick Start
 
-### 1. Clone or Download the Project
+### Option 1: Docker (Recommended)
 
 ```bash
-cd /home/ashu/RnD/research_agent
+git clone <repository-url>
+cd research_agent
+./start-docker.sh
 ```
 
-### 2. Run the Setup Script
+### Option 2: Native Installation
 
 ```bash
+git clone <repository-url>
+cd research_agent
 chmod +x setup.sh
 ./setup.sh
+./start-all.sh
 ```
 
-This script will:
-- Update system packages
-- Install Python dependencies
-- Install Node.js dependencies
-- Install and configure Ollama
-- Pull required AI models
-- Create necessary directories and scripts
+Then open http://localhost:3000 in your browser.
 
 ### 3. Start the Application
 
-**Option A: Start All Services Together**
+**Option A: Docker (Recommended)**
+```bash
+./start-docker.sh
+```
+
+**Option B: Native Start All Services**
 ```bash
 ./start-all.sh
 ```
 
-**Option B: Start Services Separately**
+**Option C: Start Services Separately**
 
 Terminal 1 - Backend:
 ```bash
 cd backend
 source venv/bin/activate
-python main.py
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Terminal 2 - Frontend:

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Download, Copy, Brain, Zap } from 'lucide-react';
+import { Send, Download, Copy, Brain, Zap, UploadCloud } from 'lucide-react';
 import './CenterPanel.css';
 
 function CenterPanel({
@@ -11,11 +11,16 @@ function CenterPanel({
   showThinking,
   onToggleThinking,
   researchProgress,
-  onExport
+  onExport,
+  uploadItems,
+  onUploadFiles,
+  activeQuery
 }) {
   const [inputValue, setInputValue] = useState('');
+  const [isDragActive, setIsDragActive] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -27,6 +32,34 @@ function CenterPanel({
     if (inputValue.trim() && !isResearching) {
       onResearch(inputValue);
       setInputValue('');
+    }
+  };
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    setIsDragActive(true);
+  };
+
+  const handleDragLeave = () => {
+    setIsDragActive(false);
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    setIsDragActive(false);
+    if (event.dataTransfer?.files?.length) {
+      onUploadFiles(event.dataTransfer.files);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (event) => {
+    if (event.target.files?.length) {
+      onUploadFiles(event.target.files);
+      event.target.value = '';
     }
   };
 
@@ -50,8 +83,52 @@ function CenterPanel({
     return <div className="markdown-content" dangerouslySetInnerHTML={{ __html: html }} />;
   };
 
+  const buildThoughtTree = (text) => {
+    if (!text) return [];
+    const lines = text.split('\n').filter(line => line.trim());
+    const nodes = [];
+    const stack = [{ depth: -1, children: nodes }];
+
+    lines.forEach((line, index) => {
+      const depth = line.match(/^\s*/)[0].length;
+      const label = line.replace(/^\s*[-*\d.)]+\s*/, '').trim();
+      const node = { id: `${index}`, label, children: [] };
+
+      while (stack.length && depth <= stack[stack.length - 1].depth) {
+        stack.pop();
+      }
+
+      stack[stack.length - 1].children.push(node);
+      stack.push({ depth, children: node.children });
+    });
+
+    return nodes;
+  };
+
+  const renderThoughtTree = (nodes) => {
+    if (!nodes.length) {
+      return <div className="thought-empty">No plan steps yet.</div>;
+    }
+
+    return (
+      <ul className="thought-tree">
+        {nodes.map(node => (
+          <li key={node.id}>
+            <span className="thought-node">{node.label}</span>
+            {node.children.length > 0 && renderThoughtTree(node.children)}
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
   return (
-    <div className="center-panel">
+    <div
+      className={`center-panel ${isDragActive ? 'drag-active' : ''}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       {/* Header */}
       <div className="center-header">
         <h2 className="center-title">Research Assistant</h2>
@@ -70,6 +147,14 @@ function CenterPanel({
           >
             <Download size={18} />
             <span className="btn-text">PDF</span>
+          </button>
+          <button
+            className="header-btn"
+            onClick={() => onExport('learning-pack')}
+            title="Export Learning Pack"
+          >
+            <Download size={18} />
+            <span className="btn-text">Pack</span>
           </button>
         </div>
       </div>
@@ -113,15 +198,16 @@ function CenterPanel({
                 {renderMarkdown(msg.content)}
               </div>
               {msg.thinking && (
-                <div className="message-thinking">
-                  <button
-                    className="thinking-toggle"
-                    onClick={() => onToggleThinking()}
-                  >
+                <details className="thought-details">
+                  <summary className="thought-summary">
                     <Brain size={16} />
-                    <span>Chain of Thought ({thinkingContent.length} chars)</span>
-                  </button>
-                </div>
+                    <span>Research Plan</span>
+                  </summary>
+                  <div className="thought-body">
+                    {renderThoughtTree(buildThoughtTree(msg.thinking))}
+                    <pre className="thought-raw">{msg.thinking}</pre>
+                  </div>
+                </details>
               )}
             </div>
             <button
@@ -135,12 +221,12 @@ function CenterPanel({
         ))}
 
         {/* Thinking Content Display */}
-        {isResearching && thinkingContent && (
+        {isResearching && thinkingContent && showThinking && (
           <div className="message message-thinking-display">
             <div className="message-avatar">🧠</div>
             <div className="message-content">
               <div className="message-header">
-                <span className="message-role">Chain of Thought</span>
+                <span className="message-role">Research Plan</span>
                 <button
                   className="thinking-close"
                   onClick={() => onToggleThinking()}
@@ -150,7 +236,8 @@ function CenterPanel({
                 </button>
               </div>
               <div className="message-body thinking-text">
-                <pre>{thinkingContent}</pre>
+                {renderThoughtTree(buildThoughtTree(thinkingContent))}
+                <pre className="thought-raw">{thinkingContent}</pre>
               </div>
             </div>
           </div>
@@ -187,6 +274,12 @@ function CenterPanel({
             <div className="progress-bar">
               <div className="progress-fill" style={{ width: `${researchProgress}%` }}></div>
             </div>
+            {thinkingContent && !showThinking && (
+              <button className="thinking-toggle" type="button" onClick={onToggleThinking}>
+                <Brain size={14} />
+                <span>Show Research Plan</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -195,7 +288,28 @@ function CenterPanel({
 
       {/* Input Footer */}
       <form className="input-footer" onSubmit={handleSubmit}>
+        {isDragActive && (
+          <div className="drop-overlay">
+            <div className="drop-title">Drop files to embed</div>
+            <div className="drop-subtitle">PDF, code, and notes supported</div>
+          </div>
+        )}
         <div className="input-wrapper">
+          <button
+            type="button"
+            className="upload-btn"
+            onClick={handleUploadClick}
+            title="Upload knowledge"
+          >
+            <UploadCloud size={18} />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden-file-input"
+            onChange={handleFileChange}
+          />
           <input
             ref={inputRef}
             type="text"
@@ -215,8 +329,24 @@ function CenterPanel({
           </button>
         </div>
         <div className="input-hints">
-          <small>💡 Type your research query and press Enter or click Send</small>
+          <small>Type your research query and press Enter or click Send</small>
+          {activeQuery && (
+            <small className="active-query">Active: {activeQuery}</small>
+          )}
         </div>
+        {uploadItems.length > 0 && (
+          <div className="upload-queue">
+            {uploadItems.map(item => (
+              <div key={item.id} className={`upload-item ${item.status}`}>
+                <div className="upload-name">{item.name}</div>
+                <div className="upload-status">
+                  <span className="upload-state">{item.status}</span>
+                  {item.detail && <span className="upload-detail">{item.detail}</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </form>
     </div>
   );

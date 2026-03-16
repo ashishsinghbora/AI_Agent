@@ -7,9 +7,14 @@ Handles agentic loop, Ollama integration, and web research capabilities
 import asyncio
 import json
 import logging
+import re
+import shutil
+import subprocess
+import tempfile
 from datetime import datetime
+from pathlib import Path
 from typing import AsyncGenerator, Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -60,6 +65,7 @@ class ResearchQuery(BaseModel):
     use_thinking_model: bool = True
     speed_mode: str = "fast"  # fast | balanced | deep
     thinking_chars: int = 180
+    preferred_domains: list[str] = []
     chat_history: list[ChatMessage] = []
 
 class ResearchSession(BaseModel):
@@ -72,6 +78,121 @@ class ResearchSession(BaseModel):
 # In-memory storage for sessions
 research_sessions = {}
 
+
+def _build_excerpt(text: str, max_len: int = 320) -> str:
+    if not text:
+        return ""
+    chunks = [chunk.strip() for chunk in text.split("\n\n") if chunk.strip()]
+    if not chunks:
+        chunks = [line.strip() for line in text.split("\n") if line.strip()]
+    excerpt = chunks[0] if chunks else text.strip()
+    if len(excerpt) > max_len:
+        excerpt = excerpt[: max_len - 3].rstrip() + "..."
+    return excerpt
+
+
+def _extract_keywords(text: str, max_terms: int = 6) -> list[str]:
+    if not text:
+        return []
+    tokens = re.findall(r"[A-Za-z][A-Za-z\-]{2,}", text.lower())
+    stopwords = {
+        "the", "and", "for", "with", "that", "this", "from", "are", "was", "were",
+        "you", "your", "into", "about", "can", "will", "their", "they", "has", "have",
+        "had", "not", "but", "use", "using", "used", "what", "when", "where", "how",
+        "why", "who", "which", "more", "most", "than", "over", "also", "its", "our",
+        "such", "these", "those", "may", "might", "been", "being", "like", "within"
+    }
+    freq = {}
+    for token in tokens:
+        if token in stopwords:
+            continue
+        freq[token] = freq.get(token, 0) + 1
+    ranked = sorted(freq.items(), key=lambda item: item[1], reverse=True)
+    return [word for word, _count in ranked[:max_terms]]
+
+
+def _detect_conflicts(sources: list[dict]) -> list[dict]:
+    pattern = re.compile(r"\b(\d+(?:\.\d+)?)\s*(nm|nanometer|%|percent|ghz|mhz|gb|tb)\b", re.I)
+    seen = {}
+    for source in sources:
+        content = source.get("content", "") or ""
+        for match in pattern.finditer(content[:2000]):
+            value = match.group(1)
+            unit = match.group(2).lower()
+            key = unit
+            seen.setdefault(key, {}).setdefault(value, []).append(
+                {
+                    "title": source.get("title"),
+                    "url": source.get("url")
+                }
+            )
+
+    conflicts = []
+    for unit, values in seen.items():
+        if len(values) > 1:
+            conflicts.append({
+                "unit": unit,
+                "values": [
+                    {"value": value, "sources": sources_list[:2]}
+                    for value, sources_list in values.items()
+                ]
+            })
+    return conflicts
+
+
+def _build_learning_pack(query: str, response: str, sources: list[dict]) -> str:
+    clean_response = response.split("### Sources", 1)[0].strip()
+    sentences = re.split(r"(?<=[.!?])\s+", clean_response)
+    summary = " ".join(sentences[:3]).strip()
+
+    keywords = _extract_keywords(clean_response, max_terms=8)
+    terms_section = "\n".join([f"- **{term.title()}**: {term} is discussed in the research findings." for term in keywords])
+
+    quiz_terms = keywords[:3] if keywords else ["this topic"]
+    quiz_questions = "\n".join([
+        f"1. What is {quiz_terms[0].title()} and why does it matter in this context?",
+        f"2. How would you apply {quiz_terms[1].title()} in a real-world scenario?" if len(quiz_terms) > 1 else "2. What is the most important takeaway from the research?",
+        f"3. What assumptions or limitations surround {quiz_terms[2].title()}?" if len(quiz_terms) > 2 else "3. Which source would you trust most and why?"
+    ])
+
+    source_list = "\n".join([
+        f"- [{source.get('title', 'Source')}]({source.get('url', '#')})"
+        for source in sources[:5]
+    ])
+
+    return f"""# Learning Pack: {query}
+
+## Summary
+{summary or clean_response[:400]}
+
+## Key Terms
+{terms_section or "- No key terms detected."}
+
+## Quick Quiz
+{quiz_questions}
+
+## Sources
+{source_list or "- No sources available."}
+"""
+
+
+def _extract_pdf_text(file_bytes: bytes) -> str:
+    if not shutil.which("pdftotext"):
+        return ""
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        pdf_path = Path(temp_dir) / "upload.pdf"
+        txt_path = Path(temp_dir) / "upload.txt"
+        pdf_path.write_bytes(file_bytes)
+        result = subprocess.run(
+            ["pdftotext", "-layout", str(pdf_path), str(txt_path)],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode != 0 or not txt_path.exists():
+            return ""
+        return txt_path.read_text(errors="ignore")
+
 # ==================== STREAMING AGENT LOOP ====================
 
 async def agent_research_loop(
@@ -80,7 +201,8 @@ async def agent_research_loop(
     use_thinking_model: bool = True,
     max_sources: int = 5,
     speed_mode: str = "fast",
-    thinking_chars: int = 180
+    thinking_chars: int = 180,
+    preferred_domains: Optional[list[str]] = None
 ) -> AsyncGenerator[str, None]:
     """
     Main research agent loop with streaming thoughts and actions
@@ -214,7 +336,8 @@ async def agent_research_loop(
             max_sources=effective_max_sources,
             request_timeout=fetch_timeout,
             include_content_chars=fetch_chars,
-            max_parallel_fetches=4
+            max_parallel_fetches=4,
+            preferred_domains=preferred_domains
         )
 
         # Keep stream payload lightweight for faster frontend updates.
@@ -222,7 +345,9 @@ async def agent_research_loop(
             {
                 "title": source.get("title"),
                 "url": source.get("url"),
-                "snippet": source.get("snippet", "")
+                "snippet": source.get("snippet", ""),
+                "excerpt": _build_excerpt(source.get("content", "")) or source.get("snippet", ""),
+                "keywords": _extract_keywords(source.get("content", "") or source.get("snippet", ""))
             }
             for source in sources
         ]
@@ -244,7 +369,19 @@ async def agent_research_loop(
             "progress": 50
         }) + "\n"
         
-        for source in sources:
+        for idx, source in enumerate(sources, start=1):
+            crawl_excerpt = _build_excerpt(source.get("content", "")) or source.get("snippet", "")
+            crawl_keywords = _extract_keywords(source.get("content", "") or source.get("snippet", ""))
+            yield json.dumps({
+                "type": "crawl_update",
+                "index": idx,
+                "total": len(sources),
+                "title": source.get("title"),
+                "url": source.get("url"),
+                "excerpt": crawl_excerpt,
+                "keywords": crawl_keywords
+            }) + "\n"
+
             await vector_store.add_document(
                 content=source.get("content", ""),
                 metadata={
@@ -253,6 +390,15 @@ async def agent_research_loop(
                     "timestamp": datetime.now().isoformat()
                 }
             )
+
+        conflicts = _detect_conflicts(sources)
+        if conflicts:
+            yield json.dumps({
+                "type": "conflict_alert",
+                "message": "Conflicting data detected across sources.",
+                "conflicts": conflicts,
+                "progress": 45
+            }) + "\n"
         
         # Step 4: Generate response using context
         yield json.dumps({
@@ -322,6 +468,26 @@ Format with markdown."""
             "content": source_section
         }) + "\n"
 
+        concept_terms = _extract_keywords(full_response, max_terms=7)
+        if concept_terms:
+            graph = {
+                "nodes": [
+                    {"id": "root", "label": query, "type": "root"},
+                    *[
+                        {"id": term, "label": term.title(), "type": "concept"}
+                        for term in concept_terms
+                    ]
+                ],
+                "edges": [
+                    {"from": "root", "to": term}
+                    for term in concept_terms
+                ]
+            }
+            yield json.dumps({
+                "type": "concept_graph",
+                "graph": graph
+            }) + "\n"
+
         session.chat_history = [
             *chat_history,
             ChatMessage(
@@ -384,7 +550,8 @@ async def research(query_data: ResearchQuery):
             use_thinking_model=query_data.use_thinking_model,
             max_sources=query_data.max_sources,
             speed_mode=query_data.speed_mode,
-            thinking_chars=query_data.thinking_chars
+            thinking_chars=query_data.thinking_chars,
+            preferred_domains=query_data.preferred_domains
         ):
             yield item
     
@@ -451,6 +618,18 @@ async def export_session(session_id: str, format: str = "markdown"):
             session_id=session_id
         )
         return JSONResponse({"path": pdf_path, "format": "pdf"})
+    elif format == "learning-pack":
+        response_text = ""
+        for message in reversed(session.chat_history):
+            if message.role == "assistant":
+                response_text = message.content
+                break
+        pack_content = _build_learning_pack(session.query, response_text, session.findings)
+        pack_path = await file_manager.create_file(
+            filename=f"learning_pack_{session_id}.md",
+            content=pack_content
+        )
+        return JSONResponse({"path": pack_path, "format": "learning-pack"})
     else:
         md_path = await file_manager.save_research(
             filename=f"export_{session_id}.md",
@@ -459,6 +638,44 @@ async def export_session(session_id: str, format: str = "markdown"):
             sources=session.findings
         )
         return JSONResponse({"path": md_path, "format": "markdown"})
+
+
+@app.post("/api/ingest")
+async def ingest_file(file: UploadFile = File(...)):
+    filename = file.filename or "upload"
+    suffix = Path(filename).suffix.lower()
+    payload = await file.read()
+
+    text_content = ""
+    if file.content_type and file.content_type.startswith("text/"):
+        text_content = payload.decode("utf-8", errors="ignore")
+    elif suffix in {".txt", ".md", ".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".csv", ".yml", ".yaml"}:
+        text_content = payload.decode("utf-8", errors="ignore")
+    elif suffix == ".pdf":
+        text_content = _extract_pdf_text(payload)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    if not text_content.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="No extractable text. For PDFs, install poppler-utils (pdftotext)."
+        )
+
+    await vector_store.add_document(
+        content=text_content,
+        metadata={
+            "filename": filename,
+            "source": "upload",
+            "timestamp": datetime.now().isoformat()
+        }
+    )
+
+    return JSONResponse({
+        "status": "embedded",
+        "filename": filename,
+        "chars": len(text_content)
+    })
 
 @app.post("/api/execute")
 async def execute_command(command_data: dict):

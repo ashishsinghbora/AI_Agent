@@ -187,7 +187,8 @@ class WebResearcher:
         max_sources: int = 5,
         request_timeout: Optional[float] = None,
         include_content_chars: Optional[int] = None,
-        max_parallel_fetches: Optional[int] = None
+        max_parallel_fetches: Optional[int] = None,
+        preferred_domains: Optional[List[str]] = None
     ) -> List[Dict]:
         """
         Research the web using Tavily API
@@ -211,6 +212,17 @@ class WebResearcher:
         # Fallback: Use DuckDuckGo search
         if not sources:
             sources = await self._duckduckgo_search(query, max_sources)
+
+        # Prefer official domains when requested (fallback to full set if none match)
+        if sources and preferred_domains:
+            normalized_domains = [d.strip().lower() for d in preferred_domains if d and d.strip()]
+            if normalized_domains:
+                filtered_sources = [
+                    source for source in sources
+                    if any(domain in (source.get("url") or "").lower() for domain in normalized_domains)
+                ]
+                if filtered_sources:
+                    sources = filtered_sources
         
         # Enrich sources with content
         semaphore = asyncio.Semaphore(effective_parallel)

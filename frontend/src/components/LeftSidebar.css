@@ -44,7 +44,7 @@
 .new-session-btn:hover {
   background-color: var(--primary-dark);
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 4px 12px rgba(45, 212, 191, 0.35);
 }
 
 .new-session-btn:active {
@@ -79,8 +79,8 @@
 
 .search-input:focus {
   border-color: var(--primary);
-  background-color: rgba(99, 102, 241, 0.1);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  background-color: rgba(45, 212, 191, 0.1);
+  box-shadow: 0 0 0 3px rgba(45, 212, 191, 0.15);
 }
 
 .search-input::placeholder {
@@ -128,13 +128,13 @@
 }
 
 .session-item:hover {
-  background-color: rgba(99, 102, 241, 0.15);
+  background-color: rgba(45, 212, 191, 0.15);
   border-left-color: var(--primary);
   transform: translateX(4px);
 }
 
 .session-item.active {
-  background-color: rgba(99, 102, 241, 0.2);
+  background-color: rgba(45, 212, 191, 0.2);
   border-left-color: var(--primary);
 }
 
