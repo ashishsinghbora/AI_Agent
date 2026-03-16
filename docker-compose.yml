@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: research-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_MODELS=/root/.ollama/models
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - research-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: research-backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_PRIMARY_MODEL=deepseek-r1:7b
+      - OLLAMA_FALLBACK_MODEL=gemma2:2b
+      - RESEARCH_NOTES_PATH=/data/research_notes
+      - CHROMA_PERSIST_DIR=/data/chroma
+    volumes:
+      - ./research_notes:/data/research_notes
+      - chroma-data:/data/chroma
+    networks:
+      - research-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: research-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      - REACT_APP_API_BASE_URL=http://localhost:8000
+      - REACT_APP_WS_URL=ws://localhost:8000
+    networks:
+      - research-network
+
+networks:
+  research-network:
+    driver: bridge
+
+volumes:
+  ollama-data:
+    driver: local
+  chroma-data:
+    driver: local

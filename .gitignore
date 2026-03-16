@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+env/
+ENV/
+.Python
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+.next/
+out/
+
+# Build outputs
+/frontend/build/
+/backend/.eggs/
+*.pyc
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Research data
+research_notes/*
+!research_notes/.gitkeep
+chroma_db/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+tmp/
+temp/
+*.tmp
+*.log
+
+# React
+/frontend/build/
+/frontend/.env.local
+/frontend/.env.development.local
+/frontend/.env.test.local
+/frontend/.env.production.local
+
+# Ollama
+/.ollama/
+
+# Cache
+.pytest_cache/
+.mypy_cache/
+*.cache
