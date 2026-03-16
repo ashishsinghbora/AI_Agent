@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ResearchProvider, useResearchContext } from './context/ResearchContext';
 import LeftSidebar from './components/LeftSidebar';
 import CenterPanel from './components/CenterPanel';
@@ -6,6 +6,9 @@ import RightSidebar from './components/RightSidebar';
 import SmartChildAvatar from './components/SmartChildAvatar';
 import SourceCountDialog from './components/SourceCountDialog';
 import OutputModeSelector from './components/OutputModeSelector';
+import ThemeToggle from './components/ThemeToggle';
+import HelpDialog from './components/HelpDialog';
+import { HelpCircle } from 'lucide-react';
 
 function AppInner() {
   const {
@@ -48,9 +51,49 @@ function AppInner() {
     handleExport,
     // system
     systemStats,
+    theme,
+    toggleTheme,
   } = useResearchContext();
 
   const [showSourceDialog, setShowSourceDialog] = useState(false);
+  const [showHelpDialog, setShowHelpDialog] = useState(false);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key) {
+          case 'n':
+            e.preventDefault();
+            handleNewSession();
+            break;
+          case 'e':
+            e.preventDefault();
+            handleExport();
+            break;
+          case 't':
+            e.preventDefault();
+            toggleTheme();
+            break;
+          case 'k':
+            e.preventDefault();
+            // Focus input
+            const input = document.querySelector('.research-input');
+            if (input) input.focus();
+            break;
+          case '/':
+            e.preventDefault();
+            setShowHelpDialog(true);
+            break;
+          default:
+            break;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleNewSession, handleExport, toggleTheme]);
 
   // Map speed mode → legacy performanceMode label for RightSidebar
   const performanceMode = speedMode === 'deep' ? 'high' : 'eco';
@@ -65,7 +108,7 @@ function AppInner() {
   };
 
   return (
-    <div className="app-container">
+    <div className="app-container" data-theme={theme}>
       <SmartChildAvatar isActive={isResearching} progress={researchProgress} />
 
       <div className="main-layout">
@@ -81,15 +124,26 @@ function AppInner() {
           {/* Output mode & source count controls above chat */}
           <div className="center-controls">
             <OutputModeSelector value={outputMode} onChange={setOutputMode} />
-            <button
-              type="button"
-              className="source-count-btn"
-              onClick={() => setShowSourceDialog(true)}
-              title="Change source count"
-            >
-              <span className="source-count-icon">🔍</span>
-              <span>{maxSources} sources</span>
-            </button>
+            <div className="center-controls-right">
+              <button
+                type="button"
+                className="source-count-btn"
+                onClick={() => setShowSourceDialog(true)}
+                title="Change source count"
+              >
+                <span className="source-count-icon">🔍</span>
+                <span>{maxSources} sources</span>
+              </button>
+              <button
+                type="button"
+                className="help-btn"
+                onClick={() => setShowHelpDialog(true)}
+                title="Keyboard shortcuts (Ctrl+/)"
+              >
+                <HelpCircle size={16} />
+              </button>
+              <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            </div>
           </div>
 
           <CenterPanel
@@ -138,6 +192,11 @@ function AppInner() {
           onCancel={() => setShowSourceDialog(false)}
         />
       )}
+
+      <HelpDialog
+        isOpen={showHelpDialog}
+        onClose={() => setShowHelpDialog(false)}
+      />
     </div>
   );
 }

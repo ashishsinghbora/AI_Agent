@@ -45,9 +45,6 @@ function OutputModeSelector({ value, onChange }) {
           );
         })}
       </div>
-      <div className="oms-description">
-        {MODES.find((m) => m.id === value)?.description || ''}
-      </div>
     </div>
   );
 }

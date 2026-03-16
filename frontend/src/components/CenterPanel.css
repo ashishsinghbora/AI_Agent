@@ -519,6 +519,7 @@
 .drag-active {
   outline: 2px dashed var(--primary);
   outline-offset: -6px;
+  background: rgba(45, 212, 191, 0.05);
 }
 
 .drop-overlay {
@@ -526,25 +527,26 @@
   bottom: 80px;
   left: 24px;
   right: 24px;
-  padding: 16px;
-  background: rgba(15, 23, 42, 0.88);
-  border: 1px dashed var(--primary);
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.95);
+  border: 2px dashed var(--primary);
   border-radius: 12px;
   text-align: center;
   z-index: 5;
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 .drop-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+  margin-bottom: 8px;
 }
 
 .drop-subtitle {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-secondary);
-  margin-top: 4px;
 }
 
 .upload-btn {

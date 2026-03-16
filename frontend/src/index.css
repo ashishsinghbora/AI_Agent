@@ -23,6 +23,23 @@
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+/* Light theme variables */
+[data-theme="light"] {
+  --primary: #0891b2;
+  --primary-dark: #0e7490;
+  --primary-light: #22d3ee;
+  --bg-dark: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --border: #cbd5e1;
+  --success: #16a34a;
+  --warning: #d97706;
+  --error: #dc2626;
+  --accent: #0284c7;
+}
+
 html, body {
   margin: 0;
   padding: 0;
@@ -73,11 +90,43 @@ html, body {
 .center-controls {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   padding: 8px 16px;
   background: var(--bg-secondary, #0f0f23);
   border-bottom: 1px solid var(--border-color, #2a2a4a);
   flex-shrink: 0;
+  justify-content: space-between;
+}
+
+.center-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background-color: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.help-btn:hover {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  transform: scale(1.05);
+}
+
+.help-btn:active {
+  transform: scale(0.98);
 }
 
 .source-count-btn {

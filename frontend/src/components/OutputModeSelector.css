@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 180px;
 }
 
 .oms-label {
@@ -12,7 +13,7 @@
 
 .oms-options {
   display: flex;
-  gap: 4px;
+  gap: 2px;
 }
 
 .oms-option {
@@ -20,13 +21,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
-  padding: 7px 4px;
+  gap: 4px;
+  padding: 6px 4px;
   border-radius: 6px;
   border: 1px solid #2a2a4a;
   background: #0f0f23;
   color: #94a3b8;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -35,12 +36,14 @@
 .oms-option:hover {
   border-color: #4a90d9;
   color: #e2e8f0;
+  transform: translateY(-1px);
 }
 
 .oms-option.active {
   border-color: #4a90d9;
   background: rgba(74, 144, 217, 0.15);
   color: #4a90d9;
+  box-shadow: 0 2px 8px rgba(74, 144, 217, 0.2);
 }
 
 .oms-icon {
@@ -49,11 +52,4 @@
 
 .oms-option-label {
   white-space: nowrap;
-}
-
-.oms-description {
-  font-size: 0.7rem;
-  color: #94a3b8;
-  font-style: italic;
-  min-height: 1em;
 }

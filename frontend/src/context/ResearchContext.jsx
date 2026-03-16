@@ -20,6 +20,7 @@ export function ResearchProvider({ children }) {
   });
   const [uploadItems, setUploadItems] = useState([]);
   const [showThinking, setShowThinking] = useState(true);
+  const [theme, setTheme] = useState('dark'); // Add theme state
   const systemStatsIntervalRef = useRef(null);
 
   // Resource controls
@@ -120,12 +121,19 @@ export function ResearchProvider({ children }) {
     setUploadItems([]);
   };
 
+  // Theme toggle
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
   const value = {
     apiBaseUrl,
     systemStats,
     uploadItems,
     showThinking,
     setShowThinking,
+    theme,
+    toggleTheme,
     handleUploadFiles,
     handleExport,
     handleResearch,
