@@ -1,6 +1,8 @@
 
 # Research Student AI Agent
 
+![AI Agent](https://github.com/user-attachments/assets/692049aa-176f-4e7f-a003-a62bec447013)
+
 A sophisticated, locally-hosted AI research assistant with a ChatGPT-style interface for autonomous web research, analysis, and knowledge management.
 
 ## 🎯 Features
