@@ -47,7 +47,10 @@ export function useResearch(apiBaseUrl) {
         useThinking = true,
         thinkingChars = 180,
         preferredDomains = [],
+        geminiApiKey,
       } = options;
+
+      const resolvedGeminiKey = (geminiApiKey || '').trim();
 
       const userMessage = { role: 'user', content: query, timestamp: new Date() };
       const requestHistory = [...chatMessages, userMessage];
@@ -129,6 +132,7 @@ export function useResearch(apiBaseUrl) {
             thinking_chars: thinkingChars,
             cpu_budget_percent: cpuBudget,
             preferred_domains: preferredDomains,
+            gemini_api_key: resolvedGeminiKey,
           }),
         });
 

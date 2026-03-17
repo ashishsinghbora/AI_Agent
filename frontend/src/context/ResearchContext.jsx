@@ -19,7 +19,6 @@ export function ResearchProvider({ children }) {
     memory: { percent: 0, used: 0, total: 0 },
   });
   const [uploadItems, setUploadItems] = useState([]);
-  const [showThinking, setShowThinking] = useState(true);
   const [theme, setTheme] = useState('dark'); // Add theme state
   const systemStatsIntervalRef = useRef(null);
 
@@ -110,7 +109,16 @@ export function ResearchProvider({ children }) {
 
   // Wrap handleResearch to inject resource options
   const handleResearch = (query, overrides = {}) => {
-    const options = { ...resourceControl.buildRequestOptions(), ...overrides };
+    const savedGeminiKey =
+      typeof window !== 'undefined'
+        ? (window.localStorage.getItem('researchAgent.geminiApiKey') || '').trim()
+        : '';
+
+    const options = {
+      ...resourceControl.buildRequestOptions(),
+      ...overrides,
+      geminiApiKey: overrides.geminiApiKey ?? savedGeminiKey,
+    };
     research.handleResearch(query, options);
   };
 
@@ -130,8 +138,6 @@ export function ResearchProvider({ children }) {
     apiBaseUrl,
     systemStats,
     uploadItems,
-    showThinking,
-    setShowThinking,
     theme,
     toggleTheme,
     handleUploadFiles,

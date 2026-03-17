@@ -3,23 +3,22 @@ import { ResearchProvider, useResearchContext } from './context/ResearchContext'
 import LeftSidebar from './components/LeftSidebar';
 import CenterPanel from './components/CenterPanel';
 import RightSidebar from './components/RightSidebar';
-import SmartChildAvatar from './components/SmartChildAvatar';
 import SourceCountDialog from './components/SourceCountDialog';
 import OutputModeSelector from './components/OutputModeSelector';
 import ThemeToggle from './components/ThemeToggle';
 import HelpDialog from './components/HelpDialog';
 import { HelpCircle } from 'lucide-react';
+import { exportConversationTranscript } from './utils/conversationExport';
 
 function AppInner() {
   const {
+    apiBaseUrl,
     // research
     chatMessages,
     isResearching,
     researchProgress,
     thinkingContent,
     responseContent,
-    showThinking,
-    setShowThinking,
     sources,
     crawlEvents,
     selectedSource,
@@ -57,6 +56,7 @@ function AppInner() {
 
   const [showSourceDialog, setShowSourceDialog] = useState(false);
   const [showHelpDialog, setShowHelpDialog] = useState(false);
+  const [showRightSidebar, setShowRightSidebar] = useState(false);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -78,8 +78,10 @@ function AppInner() {
           case 'k':
             e.preventDefault();
             // Focus input
-            const input = document.querySelector('.research-input');
-            if (input) input.focus();
+            {
+              const input = document.querySelector('.research-input');
+              if (input) input.focus();
+            }
             break;
           case '/':
             e.preventDefault();
@@ -107,10 +109,31 @@ function AppInner() {
     handlePerformanceModeChange(mode);
   };
 
+  const onShareConversation = () => {
+    const result = exportConversationTranscript({
+      chatMessages,
+      activeQuery,
+      sessionId: currentSessionId,
+    });
+
+    if (!result.ok) {
+      window.alert(result.message);
+      return;
+    }
+
+    const blob = new Blob([result.content], { type: result.mimeType });
+    const objectUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = objectUrl;
+    link.download = result.fileName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(objectUrl);
+  };
+
   return (
     <div className="app-container" data-theme={theme}>
-      <SmartChildAvatar isActive={isResearching} progress={researchProgress} />
-
       <div className="main-layout">
         <LeftSidebar
           sessions={sessions}
@@ -152,34 +175,39 @@ function AppInner() {
             isResearching={isResearching}
             thinkingContent={thinkingContent}
             responseContent={responseContent}
-            showThinking={showThinking}
-            onToggleThinking={() => setShowThinking(!showThinking)}
             researchProgress={researchProgress}
             onExport={handleExport}
+            onShareConversation={onShareConversation}
             uploadItems={uploadItems}
             onUploadFiles={handleUploadFiles}
             activeQuery={activeQuery}
+            onToggleSettings={() => setShowRightSidebar(!showRightSidebar)}
           />
         </div>
 
-        <RightSidebar
-          systemStats={systemStats}
-          sources={sources}
-          isResearching={isResearching}
-          researchProgress={researchProgress}
-          onSourceSelect={setSelectedSource}
-          selectedSource={selectedSource}
-          onCloseSource={() => setSelectedSource(null)}
-          crawlEvents={crawlEvents}
-          activeQuery={activeQuery}
-          performanceMode={performanceMode}
-          onPerformanceChange={onPerformanceChange}
-          conflictAlert={conflictAlert}
-          onResolveConflict={handleConflictDecision}
-          knowledgeGraph={knowledgeGraph}
-          cpuBudget={cpuBudget}
-          onCpuBudgetChange={setCpuBudget}
-        />
+        {showRightSidebar && (
+          <RightSidebar
+            systemStats={systemStats}
+            sources={sources}
+            isResearching={isResearching}
+            researchProgress={researchProgress}
+            onSourceSelect={setSelectedSource}
+            selectedSource={selectedSource}
+            onCloseSource={() => setSelectedSource(null)}
+            crawlEvents={crawlEvents}
+            activeQuery={activeQuery}
+            performanceMode={performanceMode}
+            onPerformanceChange={onPerformanceChange}
+            conflictAlert={conflictAlert}
+            onResolveConflict={handleConflictDecision}
+            knowledgeGraph={knowledgeGraph}
+            apiBaseUrl={apiBaseUrl}
+            cpuBudget={cpuBudget}
+            onCpuBudgetChange={setCpuBudget}
+            onRestartSession={handleNewSession}
+            isVisible={showRightSidebar}
+          />
+        )}
       </div>
 
       {showSourceDialog && (

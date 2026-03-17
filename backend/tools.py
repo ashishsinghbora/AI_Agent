@@ -1,23 +1,164 @@
 #!/usr/bin/env python3
 """
 Research Agent Tools Module
-Handles Ollama, ChromaDB, Web Research, File Management, etc.
+Handles cloud LLM, headless web research, file management, etc.
 """
 
 import asyncio
-import httpx
 import logging
-from typing import AsyncGenerator, Optional, List, Dict, Any
+import os
+import socket
+import subprocess
+import time
 from datetime import datetime
 from pathlib import Path
-import json
-import subprocess
-import re
-import shlex
-from html import unescape
-from html2text import html2text
+from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
+
+# Lightweight AI Agent Tools
+from google.generativeai import configure, GenerativeModel
+import trafilatura
+from duckduckgo_search import DDGS
+try:
+    # Works when launched as a package (backend.main).
+    from backend.report_builder import build_word_report
+except ModuleNotFoundError as exc:
+    # Fallback for direct execution from backend/ directory.
+    if exc.name in {"backend", "backend.report_builder"}:
+        from report_builder import build_word_report
+    else:
+        raise
+
+# --- Gemini API (Cloud LLM) ---
+_DEFAULT_GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+]
+
+
+def _normalize_gemini_model_name(model_name: str) -> str:
+    candidate = (model_name or "").strip()
+    if not candidate:
+        return ""
+    if candidate.startswith("models/"):
+        candidate = candidate.split("/", 1)[1]
+    # Ignore non-Gemini names (e.g., local ollama aliases like gemma2:2b).
+    if not candidate.startswith("gemini-"):
+        return ""
+    return candidate
+
+
+def _build_gemini_model_candidates(preferred_model: str = "") -> List[str]:
+    candidates: List[str] = []
+
+    preferred = _normalize_gemini_model_name(preferred_model)
+    env_model = _normalize_gemini_model_name(os.getenv("GEMINI_MODEL", ""))
+
+    if preferred:
+        candidates.append(preferred)
+    if env_model:
+        candidates.append(env_model)
+
+    candidates.extend(_DEFAULT_GEMINI_MODELS)
+
+    seen = set()
+    unique_candidates: List[str] = []
+    for name in candidates:
+        if name in seen:
+            continue
+        seen.add(name)
+        unique_candidates.append(name)
+
+    return unique_candidates
+
+
+def _is_missing_model_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "not found for api version" in message
+        or "not supported for generatecontent" in message
+        or "404 models/" in message
+        or "model not found" in message
+    )
+
+
+def gemini_ask(prompt: str, api_key: str, preferred_model: str = "") -> str:
+    configure(api_key=api_key)
+
+    last_error: Optional[Exception] = None
+    for model_name in _build_gemini_model_candidates(preferred_model):
+        try:
+            model = GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as exc:
+            last_error = exc
+            if _is_missing_model_error(exc):
+                logger.warning("Gemini model '%s' unavailable, trying fallback.", model_name)
+                continue
+            raise
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("No Gemini model candidates available.")
+
+# --- DuckDuckGo Search (Text Only) ---
+def search_duckduckgo(query: str, max_results: int = 5) -> list:
+    with DDGS() as ddgs:
+        return list(ddgs.text(query, max_results=max_results))
+
+# --- Trafilatura Web Scraping (Headless, Text-Only) ---
+def scrape_url_text(url: str) -> str:
+    downloaded = trafilatura.fetch_url(url)
+    if not downloaded:
+        return ""
+    return trafilatura.extract(downloaded, include_comments=False, include_tables=False) or ""
+
+# --- Report Generation (Word) ---
+def generate_report(summary: str, sources: list, filename: str = "Research_Report.docx"):
+    return build_word_report(summary, sources, filename)
+
+
+class GeminiStreamManager:
+    """Compatibility wrapper that provides a streaming model interface."""
+
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY", "")
+
+    async def generate_streaming(
+        self,
+        prompt: str,
+        model: str = "gemini-2.0-flash",
+        temperature: float = 0.5,
+        max_tokens: int = 1024,
+    ):
+        del temperature, max_tokens
+
+        if not self.api_key:
+            yield "GEMINI_API_KEY is not configured."
+            return
+
+        try:
+            text = await asyncio.to_thread(
+                gemini_ask,
+                prompt,
+                self.api_key,
+                _normalize_gemini_model_name(model),
+            )
+        except Exception as exc:
+            logger.error("Gemini request failed: %s", exc)
+            yield f"Model request failed: {exc}"
+            return
+
+        chunk_size = 220
+        for idx in range(0, len(text), chunk_size):
+            yield text[idx:idx + chunk_size]
+
+
 import hashlib
-from urllib.parse import quote_plus, urlparse, parse_qs, unquote
 
 # Third-party imports - will be installed via setup.sh
 try:
@@ -27,78 +168,6 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# ==================== OLLAMA MANAGER ====================
-
-class OllamaManager:
-    """Manages Ollama model interactions"""
-    
-    def __init__(self, model_primary: str = "deepseek-r1:7b", model_fallback: str = "gemma2:2b"):
-        self.base_url = "http://localhost:11434"
-        self.model_primary = model_primary
-        self.model_fallback = model_fallback
-        self.client = httpx.AsyncClient(timeout=300)
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """Check if Ollama is running"""
-        try:
-            response = await self.client.get(f"{self.base_url}/api/tags")
-            if response.status_code == 200:
-                models = response.json().get("models", [])
-                return {
-                    "status": "running",
-                    "models_available": [m["name"] for m in models]
-                }
-            return {"status": "error", "message": "Ollama not responding"}
-        except Exception as e:
-            logger.error(f"Ollama health check failed: {e}")
-            return {"status": "error", "message": str(e)}
-    
-    async def generate_streaming(
-        self,
-        prompt: str,
-        model: Optional[str] = None,
-        temperature: float = 0.7,
-        max_tokens: int = 2048
-    ) -> AsyncGenerator[str, None]:
-        """Generate response with streaming"""
-        
-        if model is None:
-            model = self.model_primary
-        
-        try:
-            async with self.client.stream(
-                "POST",
-                f"{self.base_url}/api/generate",
-                json={
-                    "model": model,
-                    "prompt": prompt,
-                    "temperature": temperature,
-                    "num_predict": max_tokens,
-                    "stream": True,
-                    "keep_alive": "5m"  # Keep model in RAM for 5 minutes
-                }
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            if "response" in data:
-                                yield data["response"]
-                        except json.JSONDecodeError:
-                            continue
-        except Exception as e:
-            logger.error(f"Error generating response: {e}")
-            # Fallback to simpler model
-            if model != self.model_fallback:
-                logger.info(f"Falling back to {self.model_fallback}")
-                async for chunk in self.generate_streaming(
-                    prompt=prompt,
-                    model=self.model_fallback,
-                    temperature=temperature,
-                    max_tokens=max_tokens
-                ):
-                    yield chunk
 
 # ==================== VECTOR STORE (CHROMA DB) ====================
 
@@ -137,13 +206,14 @@ class VectorStore:
         if not self.collection:
             return
         
-        doc_id = hashlib.md5(content.encode()).hexdigest()
+        doc_id = hashlib.sha256(content.encode()).hexdigest()
         
         try:
-            self.collection.add(
+            await asyncio.to_thread(
+                self.collection.add,
                 ids=[doc_id],
                 documents=[content],
-                metadatas=[metadata]
+                metadatas=[metadata],
             )
             logger.info(f"Added document {doc_id} to vector store")
         except Exception as e:
@@ -155,9 +225,10 @@ class VectorStore:
             return []
         
         try:
-            results = self.collection.query(
+            results = await asyncio.to_thread(
+                self.collection.query,
                 query_texts=[query],
-                n_results=top_k
+                n_results=top_k,
             )
             
             documents = []
@@ -176,265 +247,84 @@ class VectorStore:
 # ==================== WEB RESEARCHER ====================
 
 class WebResearcher:
-    """Handles web research using Crawl4AI or Tavily"""
-    
-    def __init__(self):
-        self.client = httpx.AsyncClient(timeout=30)
-    
+    """Performs text-only web search and extraction."""
+
+    async def check_internet_via_terminal(self) -> Dict[str, Any]:
+        """Quick connectivity check used by the orchestrator."""
+        start = time.perf_counter()
+        try:
+            sock = await asyncio.to_thread(socket.create_connection, ("1.1.1.1", 53), 3.0)
+            sock.close()
+            latency_ms = int((time.perf_counter() - start) * 1000)
+            return {"online": True, "method": "socket", "latency_ms": latency_ms}
+        except OSError as exc:
+            return {
+                "online": False,
+                "method": "socket",
+                "latency_ms": None,
+                "error": str(exc),
+            }
+
     async def research(
         self,
         query: str,
         max_sources: int = 5,
-        request_timeout: Optional[float] = None,
-        include_content_chars: Optional[int] = None,
-        max_parallel_fetches: Optional[int] = None,
-        preferred_domains: Optional[List[str]] = None
-    ) -> List[Dict]:
-        """
-        Research the web using Tavily API
-        Falls back to simple web scraping if API unavailable
-        """
-        sources = []
+        request_timeout: float = 12.0,
+        preferred_domains: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Search and scrape a small set of relevant web sources."""
+        del request_timeout
 
-        effective_timeout = request_timeout if request_timeout is not None else 30
-        effective_content_chars = include_content_chars if include_content_chars is not None else 2000
-        effective_parallel = max(1, max_parallel_fetches or 1)
-        
-        # Try Tavily API (requires API key)
-        tavily_key = self._get_env("TAVILY_API_KEY")
-        if tavily_key:
-            sources = await self._tavily_search(query, tavily_key, max_sources, effective_timeout)
+        preferred_domains = preferred_domains or []
+        raw_results = await asyncio.to_thread(
+            search_duckduckgo,
+            query,
+            max(max_sources * 2, max_sources),
+        )
 
-        # Terminal-based fallback search (requested behavior)
-        if not sources:
-            sources = await self._terminal_web_search(query, max_sources, effective_timeout)
-        
-        # Fallback: Use DuckDuckGo search
-        if not sources:
-            sources = await self._duckduckgo_search(query, max_sources)
+        normalized: List[Dict[str, Any]] = []
+        for item in raw_results:
+            url = item.get("href") or item.get("url") or ""
+            if not url:
+                continue
 
-        # Prefer official domains when requested (fallback to full set if none match)
-        if sources and preferred_domains:
-            normalized_domains = [d.strip().lower() for d in preferred_domains if d and d.strip()]
-            if normalized_domains:
-                filtered_sources = [
-                    source for source in sources
-                    if any(domain in (source.get("url") or "").lower() for domain in normalized_domains)
-                ]
-                if filtered_sources:
-                    sources = filtered_sources
-        
-        # Enrich sources with content
-        semaphore = asyncio.Semaphore(effective_parallel)
-
-        async def enrich_source(source: Dict[str, Any]) -> Dict[str, Any]:
-            try:
-                async with semaphore:
-                    content = await self._fetch_page_content(
-                        source.get("url", ""),
-                        request_timeout=effective_timeout,
-                        max_chars=effective_content_chars
-                    )
-                source["content"] = content
-            except Exception as e:
-                logger.warning(f"Could not fetch content from {source.get('url')}: {e}")
-            return source
-
-        enriched_sources = []
-        if sources:
-            enriched_sources = await asyncio.gather(
-                *(enrich_source(source) for source in sources[:max_sources])
-            )
-        
-        return enriched_sources
-
-    async def check_internet_via_terminal(self) -> Dict[str, Any]:
-        """Check internet reachability using a terminal command."""
-        command = "curl -I -s --max-time 10 https://duckduckgo.com | head -n 1"
-
-        try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=15
-            )
-
-            line = (result.stdout or result.stderr).strip()
-            online = result.returncode == 0 and any(code in line for code in ("200", "301", "302"))
-            return {"online": online, "details": line}
-        except Exception as e:
-            logger.warning(f"Terminal internet check failed: {e}")
-            return {"online": False, "details": str(e)}
-
-    async def _terminal_web_search(
-        self,
-        query: str,
-        max_results: int,
-        request_timeout: Optional[float] = None
-    ) -> List[Dict]:
-        """Search the web via terminal curl against DuckDuckGo HTML endpoint."""
-        search_url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"
-        max_time = int(request_timeout) if request_timeout else 20
-        max_time = max(5, min(max_time, 60))
-        command = f"curl -L -A 'Mozilla/5.0' -s --max-time {max_time} {shlex.quote(search_url)}"
-
-        try:
-            result = await asyncio.to_thread(
-                subprocess.run,
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=30
-            )
-
-            if result.returncode != 0 or not result.stdout:
-                return []
-
-            html = result.stdout
-            pattern = r'<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>(.*?)</a>'
-            matches = re.findall(pattern, html, flags=re.IGNORECASE | re.DOTALL)
-
-            parsed_results = []
-            for href, title_html in matches:
-                url = self._normalize_result_url(href)
-                if not url:
+            if preferred_domains:
+                host = urlparse(url).netloc.lower()
+                if not any(domain.lower() in host for domain in preferred_domains):
                     continue
 
-                title = re.sub(r"<[^>]+>", "", title_html)
-                title = unescape(title).strip() or "Web result"
+            normalized.append(
+                {
+                    "title": item.get("title") or "Untitled Source",
+                    "url": url,
+                    "snippet": item.get("body") or item.get("snippet") or "",
+                }
+            )
+            if len(normalized) >= max_sources:
+                break
 
-                parsed_results.append(
+        if not normalized and preferred_domains:
+            for item in raw_results[:max_sources]:
+                url = item.get("href") or item.get("url") or ""
+                if not url:
+                    continue
+                normalized.append(
                     {
-                        "title": title,
+                        "title": item.get("title") or "Untitled Source",
                         "url": url,
-                        "snippet": ""
+                        "snippet": item.get("body") or item.get("snippet") or "",
                     }
                 )
 
-                if len(parsed_results) >= max_results:
-                    break
+        sources: List[Dict[str, Any]] = []
+        for item in normalized[:max_sources]:
+            content = await asyncio.to_thread(scrape_url_text, item["url"])
+            item["content"] = content or item["snippet"]
+            sources.append(item)
 
-            return parsed_results
-        except Exception as e:
-            logger.warning(f"Terminal web search failed: {e}")
-            return []
-    
-    async def _tavily_search(
-        self,
-        query: str,
-        api_key: str,
-        max_results: int,
-        request_timeout: Optional[float] = None
-    ) -> List[Dict]:
-        """Search using Tavily API"""
-        try:
-            response = await self.client.post(
-                "https://api.tavily.com/search",
-                json={
-                    "api_key": api_key,
-                    "query": query,
-                    "max_results": max_results,
-                    "include_answer": True
-                },
-                timeout=request_timeout
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                return [
-                    {
-                        "title": result.get("title"),
-                        "url": result.get("url"),
-                        "snippet": result.get("content")
-                    }
-                    for result in data.get("results", [])
-                ]
-        except Exception as e:
-            logger.warning(f"Tavily search failed: {e}")
-        
-        return []
-    
-    async def _duckduckgo_search(self, query: str, max_results: int) -> List[Dict]:
-        """Fallback: DuckDuckGo search"""
-        try:
-            # Using duckduckgo-search library
-            from duckduckgo_search import DDGS
-            
-            ddgs = DDGS()
-            results = ddgs.text(query, max_results=max_results)
-            
-            return [
-                {
-                    "title": r.get("title"),
-                    "url": r.get("href"),
-                    "snippet": r.get("body")
-                }
-                for r in results
-            ]
-        except Exception as e:
-            logger.warning(f"DuckDuckGo search failed: {e}")
-            return []
-    
-    async def _fetch_page_content(
-        self,
-        url: str,
-        request_timeout: Optional[float] = None,
-        max_chars: int = 2000
-    ) -> str:
-        """Fetch and convert webpage to text"""
-        try:
-            response = await self.client.get(
-                url,
-                follow_redirects=True,
-                headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"},
-                timeout=request_timeout
-            )
-            if response.status_code == 200:
-                # Convert HTML to markdown
-                text_content = html2text(response.text)
-                return text_content[:max_chars]  # Limit content size
-            return ""
-        except Exception as e:
-            logger.warning(f"Failed to fetch {url}: {e}")
-            return ""
+        return sources
 
-    @staticmethod
-    def _normalize_result_url(href: str) -> Optional[str]:
-        """Normalize direct and DuckDuckGo redirect URLs to clean http(s) links."""
-        href = unescape(href or "").strip()
-        if not href:
-            return None
 
-        # Drop ad/tracking endpoints from search results.
-        if "duckduckgo.com/y.js" in href or "bing.com/aclick" in href:
-            return None
-
-        if href.startswith("//"):
-            href = f"https:{href}"
-
-        if href.startswith("/"):
-            href = f"https://duckduckgo.com{href}"
-
-        if "duckduckgo.com/l/?" in href:
-            parsed = urlparse(href)
-            uddg = parse_qs(parsed.query).get("uddg")
-            if uddg:
-                clean = unquote(uddg[0])
-                if "bing.com/aclick" in clean:
-                    return None
-                return clean if clean.startswith("http") else None
-
-        return href if href.startswith("http://") or href.startswith("https://") else None
-    
-    @staticmethod
-    def _get_env(key: str) -> Optional[str]:
-        """Get environment variable"""
-        import os
-        return os.getenv(key)
 
 # ==================== FILE MANAGER ====================
 
@@ -448,25 +338,25 @@ class FileManager:
     async def create_file(self, filename: str, content: str) -> str:
         """Create a new file"""
         file_path = self.base_path / filename
-        file_path.write_text(content)
+        await asyncio.to_thread(file_path.write_text, content)
         logger.info(f"Created file: {file_path}")
         return str(file_path)
     
-    async def read_file(self, filename: str) -> str:
+    def read_file(self, filename: str) -> str:
         """Read a file"""
         file_path = self.base_path / filename
         if not file_path.exists():
             raise FileNotFoundError(f"File not found: {file_path}")
         return file_path.read_text()
     
-    async def update_file(self, filename: str, content: str) -> str:
+    def update_file(self, filename: str, content: str) -> str:
         """Update existing file"""
         file_path = self.base_path / filename
         file_path.write_text(content)
         logger.info(f"Updated file: {file_path}")
         return str(file_path)
     
-    async def list_files(self) -> List[str]:
+    def list_files(self) -> List[str]:
         """List all files in research_notes"""
         return [f.name for f in self.base_path.glob("*") if f.is_file()]
     
@@ -552,7 +442,7 @@ class TerminalExecutor:
 class ResearchSummarizer:
     """Generate summaries and export research"""
     
-    async def create_summary(
+    def create_summary(
         self,
         query: str,
         response: str,
@@ -578,6 +468,15 @@ class ResearchSummarizer:
         self,
         query: str,
         findings: List[Dict],
+        session_id: str,
+    ) -> str:
+        """Generate PDF export of research without blocking the event loop."""
+        return await asyncio.to_thread(self._generate_pdf_sync, query, findings, session_id)
+
+    def _generate_pdf_sync(
+        self,
+        query: str,
+        findings: List[Dict],
         session_id: str
     ) -> str:
         """Generate PDF export of research"""
@@ -588,7 +487,7 @@ class ResearchSummarizer:
             
             pdf_path = f"/tmp/research_{session_id}.pdf"
             c = canvas.Canvas(pdf_path, pagesize=letter)
-            width, height = letter
+            _, height = letter
             
             # Title
             c.setFont("Helvetica-Bold", 16)

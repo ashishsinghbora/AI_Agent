@@ -1,7 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Cpu, HardDrive, Link2, ExternalLink, Terminal, Zap, AlertTriangle, Share2 } from 'lucide-react';
+import {
+  Activity,
+  Cpu,
+  HardDrive,
+  Link2,
+  ExternalLink,
+  Terminal,
+  Zap,
+  AlertTriangle,
+  Share2,
+  KeyRound,
+  Eye,
+  EyeOff,
+  RefreshCw,
+} from 'lucide-react';
 import './RightSidebar.css';
 import CPUBudgetSlider from './CPUBudgetSlider';
+
+
+const API_KEY_STORAGE_KEY = 'researchAgent.geminiApiKey';
+
 
 function RightSidebar({
   systemStats,
@@ -18,16 +36,172 @@ function RightSidebar({
   conflictAlert,
   onResolveConflict,
   knowledgeGraph,
+  apiBaseUrl,
   cpuBudget,
   onCpuBudgetChange,
+  onRestartSession,
+  isVisible,
 }) {
+  // Simulated GPU and network usage (slowly animated)
   const [ramUsage, setRamUsage] = useState(0);
+  const [gpuUsage, setGpuUsage] = useState(18);
+  const [netUsage, setNetUsage] = useState(12);
+  const [apiKeyInput, setApiKeyInput] = useState('');
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const [apiKeyStatus, setApiKeyStatus] = useState({
+    type: 'info',
+    message: 'Save keeps the key in browser and also syncs backend runtime settings.',
+  });
 
   useEffect(() => {
     if (systemStats && systemStats.memory) {
       setRamUsage(systemStats.memory.percent);
     }
-  }, [systemStats]);
+    
+    // Only run animations when sidebar is visible
+    if (!isVisible) return;
+    
+    // Animate GPU usage
+    const gpuInt = setInterval(() => setGpuUsage(u => Math.max(10, Math.min(90, u + (Math.random() - 0.5) * 2))), 1800);
+    const netInt = setInterval(() => setNetUsage(n => Math.max(5, Math.min(80, n + (Math.random() - 0.5) * 1.5))), 2200);
+    return () => { clearInterval(gpuInt); clearInterval(netInt); };
+  }, [systemStats, isVisible]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedKey = window.localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+    if (savedKey) {
+      setApiKeyInput(savedKey);
+      setApiKeyStatus({
+        type: 'success',
+        message: 'API key loaded from browser storage.',
+      });
+    }
+  }, []);
+
+  const syncApiKeyToBackend = async (apiKey) => {
+    if (!apiBaseUrl) {
+      return { ok: false, message: 'Missing backend URL. Cannot sync key to backend.' };
+    }
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/api/config/gemini-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ api_key: apiKey, persist_to_env: true }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          message: data.detail || data.message || `Backend sync failed (${response.status})`,
+        };
+      }
+
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: `Backend sync error: ${error.message}`,
+      };
+    }
+  };
+
+  const saveApiKey = async () => {
+    if (typeof window === 'undefined') return;
+
+    const key = apiKeyInput.trim();
+    if (!key) {
+      window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+      setApiKeyStatus({ type: 'warning', message: 'No key entered. Browser storage cleared.' });
+      return;
+    }
+
+    window.localStorage.setItem(API_KEY_STORAGE_KEY, key);
+
+    const syncResult = await syncApiKeyToBackend(key);
+    if (!syncResult.ok) {
+      setApiKeyStatus({
+        type: 'warning',
+        message: `Saved in browser. ${syncResult.message}`,
+      });
+      return;
+    }
+
+    setApiKeyStatus({
+      type: 'success',
+      message: 'Key saved in browser and synced to backend runtime/.env.',
+    });
+  };
+
+  const clearApiKey = async () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(API_KEY_STORAGE_KEY);
+    }
+
+    const syncResult = await syncApiKeyToBackend('');
+    setApiKeyInput('');
+    setApiKeyStatus({
+      type: syncResult.ok ? 'info' : 'warning',
+      message: syncResult.ok
+        ? 'API key removed from browser storage and backend.'
+        : `Removed from browser storage. ${syncResult.message}`,
+    });
+  };
+
+  const testApiKey = async () => {
+    const key = apiKeyInput.trim();
+    if (!key) {
+      setApiKeyStatus({ type: 'warning', message: 'Enter your Gemini API key first.' });
+      return;
+    }
+
+    setIsTestingKey(true);
+    setApiKeyStatus({ type: 'info', message: 'Testing key with Gemini API...' });
+
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`
+      );
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok && Array.isArray(data.models) && data.models.length > 0) {
+        setApiKeyStatus({ type: 'success', message: 'API key is valid and working.' });
+      } else {
+        const errorText = data?.error?.message || `Validation failed (${response.status}).`;
+        setApiKeyStatus({
+          type: 'error',
+          message: `${errorText} Use restart actions below after fixing key.`,
+        });
+      }
+    } catch (error) {
+      setApiKeyStatus({
+        type: 'error',
+        message: `Test failed: ${error.message}. Check network and retry.`,
+      });
+    } finally {
+      setIsTestingKey(false);
+    }
+  };
+
+  const restartUi = () => {
+    if (typeof window !== 'undefined') {
+      window.location.reload();
+    }
+  };
+
+  const restartSession = () => {
+    if (onRestartSession) {
+      onRestartSession();
+    }
+    setApiKeyStatus({
+      type: 'info',
+      message: 'Session restarted. You can test key again if needed.',
+    });
+  };
 
   const getStatsColor = (value, threshold = 70) => {
     if (value >= threshold) return 'critical';
@@ -121,39 +295,43 @@ function RightSidebar({
           <h3 className="monitor-title">System Monitor</h3>
         </div>
 
+
         <div className="stats-grid">
           {/* CPU Stats */}
           <div className={`stat-card ${getStatsColor(systemStats.cpu_percent)}`}>
-            <div className="stat-icon">
-              <Cpu size={20} />
-            </div>
+            <div className="stat-icon"><Cpu size={20} /></div>
             <div className="stat-info">
               <div className="stat-label">CPU Usage</div>
               <div className="stat-value">{systemStats.cpu_percent.toFixed(1)}%</div>
             </div>
-            <div className="stat-bar">
-              <div
-                className="stat-bar-fill"
-                style={{ width: `${Math.min(100, systemStats.cpu_percent)}%` }}
-              ></div>
-            </div>
+            <div className="stat-bar"><div className="stat-bar-fill" style={{ width: `${Math.min(100, systemStats.cpu_percent)}%` }}></div></div>
           </div>
-
+          {/* GPU Stats (simulated) */}
+          <div className={`stat-card ${getStatsColor(gpuUsage)}`}>
+            <div className="stat-icon"><HardDrive size={20} style={{ color: '#6ee7b7' }} /></div>
+            <div className="stat-info">
+              <div className="stat-label">GPU Usage</div>
+              <div className="stat-value">{gpuUsage.toFixed(1)}%</div>
+            </div>
+            <div className="stat-bar"><div className="stat-bar-fill" style={{ width: `${Math.min(100, gpuUsage)}%`, background: '#6ee7b7' }}></div></div>
+          </div>
           {/* Memory Stats */}
           <div className={`stat-card ${getStatsColor(ramUsage)}`}>
-            <div className="stat-icon">
-              <HardDrive size={20} />
-            </div>
+            <div className="stat-icon"><HardDrive size={20} /></div>
             <div className="stat-info">
               <div className="stat-label">Memory Usage</div>
               <div className="stat-value">{ramUsage.toFixed(1)}%</div>
             </div>
-            <div className="stat-bar">
-              <div
-                className="stat-bar-fill"
-                style={{ width: `${Math.min(100, ramUsage)}%` }}
-              ></div>
+            <div className="stat-bar"><div className="stat-bar-fill" style={{ width: `${Math.min(100, ramUsage)}%` }}></div></div>
+          </div>
+          {/* Network Stats (simulated) */}
+          <div className={`stat-card ${getStatsColor(netUsage)}`}>
+            <div className="stat-icon"><Activity size={20} style={{ color: '#60a5fa' }} /></div>
+            <div className="stat-info">
+              <div className="stat-label">Network Usage</div>
+              <div className="stat-value">{netUsage.toFixed(1)}%</div>
             </div>
+            <div className="stat-bar"><div className="stat-bar-fill" style={{ width: `${Math.min(100, netUsage)}%`, background: '#60a5fa' }}></div></div>
           </div>
         </div>
 
@@ -202,6 +380,67 @@ function RightSidebar({
             <CPUBudgetSlider value={cpuBudget ?? 80} onChange={onCpuBudgetChange} />
           </div>
         )}
+      </div>
+
+      <div className="monitor-section glass-panel api-key-section">
+        <div className="monitor-header">
+          <KeyRound size={18} />
+          <h3 className="monitor-title">API Key Control</h3>
+        </div>
+        <p className="api-key-caption">
+          Saved locally for quick reuse. On save, this panel can also sync the key to backend runtime and
+          backend/.env for smoother startup.
+        </p>
+
+        <div className="api-key-input-row">
+          <input
+            className="api-key-input"
+            type={showApiKey ? 'text' : 'password'}
+            value={apiKeyInput}
+            onChange={(event) => setApiKeyInput(event.target.value)}
+            placeholder="Paste Gemini API key"
+            autoComplete="off"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            className="api-key-visibility"
+            onClick={() => setShowApiKey((prev) => !prev)}
+            title={showApiKey ? 'Hide key' : 'Show key'}
+          >
+            {showApiKey ? <EyeOff size={15} /> : <Eye size={15} />}
+          </button>
+        </div>
+
+        <div className="api-key-actions">
+          <button type="button" className="api-key-btn" onClick={saveApiKey}>
+            Save
+          </button>
+          <button
+            type="button"
+            className="api-key-btn primary"
+            onClick={testApiKey}
+            disabled={isTestingKey}
+          >
+            {isTestingKey ? 'Testing...' : 'Test'}
+          </button>
+          <button type="button" className="api-key-btn" onClick={clearApiKey}>
+            Clear
+          </button>
+        </div>
+
+        <div className={`api-key-status ${apiKeyStatus.type}`}>{apiKeyStatus.message}</div>
+
+        <div className="api-key-actions secondary">
+          <button type="button" className="api-key-btn" onClick={restartSession}>
+            <RefreshCw size={13} />
+            Restart Session
+          </button>
+          <button type="button" className="api-key-btn" onClick={restartUi}>
+            <RefreshCw size={13} />
+            Restart UI
+          </button>
+        </div>
       </div>
 
       {/* Research Progress */}
@@ -341,16 +580,16 @@ function RightSidebar({
           <div className="info-item">
             <span className="info-label">Thinking Model</span>
             <span className="info-value">
-              {performanceMode === 'eco' ? 'tiny (fast plan)' : 'deepseek-r1:7b'}
+              {performanceMode === 'eco' ? 'cloud-fast' : 'cloud-accurate'}
             </span>
           </div>
           <div className="info-item">
             <span className="info-label">Response Model</span>
-            <span className="info-value">gemma2:2b</span>
+            <span className="info-value">Gemini 1.5 Flash</span>
           </div>
           <div className="info-item">
             <span className="info-label">Backend</span>
-            <span className="info-value">FastAPI + Ollama</span>
+            <span className="info-value">FastAPI (Cloud LLM)</span>
           </div>
         </div>
       </div>

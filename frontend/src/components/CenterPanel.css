@@ -8,12 +8,29 @@
 }
 
 .center-header {
-  padding: 16px 24px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
+  align-items: stretch;
+  background: rgba(15, 23, 42, 0.56);
+  gap: 14px;
+  backdrop-filter: blur(8px);
+}
+
+.header-left {
+  display: flex;
   align-items: center;
-  background-color: var(--bg-secondary);
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.header-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .center-title {
@@ -23,16 +40,27 @@
   margin: 0;
 }
 
+.center-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 460px;
+}
+
 .header-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .header-btn {
-  width: 36px;
+  min-width: 66px;
   height: 36px;
   border-radius: 8px;
-  background-color: var(--bg-tertiary);
+  background: rgba(30, 41, 59, 0.75);
   color: var(--text-secondary);
   border: 1px solid var(--border);
   cursor: pointer;
@@ -43,7 +71,7 @@
   transition: all 0.2s ease;
   font-size: 12px;
   white-space: nowrap;
-  padding: 0 10px;
+  padding: 0 12px;
 }
 
 .header-btn:hover {
@@ -52,8 +80,33 @@
   border-color: var(--primary);
 }
 
+.header-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.share-btn {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.24), rgba(56, 189, 248, 0.22));
+  border-color: rgba(45, 212, 191, 0.45);
+  color: var(--text-primary);
+}
+
+.settings-btn {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.24), rgba(168, 85, 247, 0.22));
+  border-color: rgba(139, 92, 246, 0.45);
+  color: var(--text-primary);
+}
+
 .btn-text {
-  margin-left: 4px;
+  margin-left: 2px;
+}
+
+[data-theme="light"] .center-header {
+  background: rgba(255, 255, 255, 0.76);
+}
+
+[data-theme="light"] .header-btn {
+  background: rgba(255, 255, 255, 0.82);
 }
 
 .messages-container {
@@ -705,4 +758,34 @@
 .thought-empty {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+@media (max-width: 840px) {
+  .center-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-left {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .header-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .center-header {
+    padding: 12px;
+  }
+
+  .messages-container {
+    padding: 14px 12px;
+  }
+
+  .input-footer {
+    padding: 12px;
+  }
 }

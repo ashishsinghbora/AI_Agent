@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Download, Copy, Zap, UploadCloud } from 'lucide-react';
+import { Send, Download, Copy, Zap, UploadCloud, Share2, Settings } from 'lucide-react';
 import './CenterPanel.css';
 import CollapsedThinking from './CollapsedThinking';
+import NeuralStreamBadge from './NeuralStreamBadge';
 
 function CenterPanel({
   chatMessages,
@@ -9,13 +10,13 @@ function CenterPanel({
   isResearching,
   thinkingContent,
   responseContent,
-  showThinking,
-  onToggleThinking,
   researchProgress,
   onExport,
+  onShareConversation,
   uploadItems,
   onUploadFiles,
-  activeQuery
+  activeQuery,
+  onToggleSettings
 }) {
   const [inputValue, setInputValue] = useState('');
   const [isDragActive, setIsDragActive] = useState(false);
@@ -93,7 +94,15 @@ function CenterPanel({
     >
       {/* Header */}
       <div className="center-header">
-        <h2 className="center-title">Research Assistant</h2>
+        <div className="header-left">
+          <NeuralStreamBadge isActive={isResearching} />
+          <div className="header-meta">
+            <h2 className="center-title">Research Assistant</h2>
+            <p className="center-subtitle">
+              Fast neural routing across sources for synthesis and grounded answers.
+            </p>
+          </div>
+        </div>
         <div className="header-actions">
           <button
             className="header-btn"
@@ -101,6 +110,7 @@ function CenterPanel({
             title="Export as Markdown"
           >
             <Download size={18} />
+            <span className="btn-text">MD</span>
           </button>
           <button
             className="header-btn"
@@ -117,6 +127,25 @@ function CenterPanel({
           >
             <Download size={18} />
             <span className="btn-text">Pack</span>
+          </button>
+          <button
+            className="header-btn share-btn"
+            onClick={onShareConversation}
+            title="Share conversation export"
+            disabled={!chatMessages.length}
+            type="button"
+          >
+            <Share2 size={18} />
+            <span className="btn-text">Share</span>
+          </button>
+          <button
+            className="header-btn settings-btn"
+            onClick={onToggleSettings}
+            title="Toggle settings panel"
+            type="button"
+          >
+            <Settings size={18} />
+            <span className="btn-text">Settings</span>
           </button>
         </div>
       </div>
