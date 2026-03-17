@@ -1,5 +1,6 @@
 # AI Agent
 
+![AI Agent](https://github.com/user-attachments/assets/692049aa-176f-4e7f-a003-a62bec447013)
 A lightweight research assistant with a React frontend and FastAPI backend.
 
 ## What It Does
